@@ -11,12 +11,15 @@ SHELL := /bin/bash
 BUILDER_IMAGE := lapis-endeavouros-builder
 BUILDER_DIR := lapis-endeavouros-builder
 IMAGES_DIR := images
+LAPIS_PORT_TREE ?= $(abspath $(CURDIR)/..)
 DOCKER_RUN := docker run --rm --privileged \
 	-v "$(CURDIR)/$(IMAGES_DIR):/build/images" \
+	-v "$(LAPIS_PORT_TREE):/port:ro" \
 	-v /dev:/dev \
 	-e BUILD_GIT_REV="$(BUILD_GIT_REV)" \
 	-e LAPIS_REPO_URL="$(LAPIS_REPO_URL)" \
 	-e LAPIS_REPO_NAME="$(LAPIS_REPO_NAME)" \
+	-e LAPIS_PORT_TREE=/port \
 	$(BUILDER_IMAGE)
 
 # Propagate git revision when building locally; CI sets BUILD_GIT_REV explicitly.
@@ -39,6 +42,7 @@ help:
 	@echo "Environment variables:"
 	@echo "  LAPIS_REPO_URL     Override the lapis-pkgs pacman repo URL"
 	@echo "  LAPIS_REPO_NAME    Override the lapis-pkgs repo section name"
+	@echo "  LAPIS_PORT_TREE    TB520FU checkout (sensors and firmware). Default: the parent directory"
 	@echo "  BUILD_GIT_REV      Git revision stamped into build metadata"
 
 check-docker:

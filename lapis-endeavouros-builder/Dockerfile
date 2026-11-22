@@ -10,7 +10,7 @@ RUN pacman-key --init && \
     pacman -Sy --noconfirm archlinuxarm-keyring && \
     pacman -Su --noconfirm && \
     pacman -S --noconfirm \
-    git wget rsync \
+    git wget rsync python zstd \
     arch-install-scripts e2fsprogs dosfstools zip unzip \
     android-tools
 

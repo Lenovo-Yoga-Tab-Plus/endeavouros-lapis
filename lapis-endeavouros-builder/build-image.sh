@@ -2,11 +2,12 @@
 # Build an EndeavourOS image for the Lenovo Yoga Tab Plus (codename lapis).
 #
 # The boot path matches the running tablet:
-#   boot_b       Mu-Silicium UEFI
+#   boot_a       Mu-Silicium UEFI (Linux). Slot B stays the Android boot.
 #   pstoredump   FAT16 EFI system partition (4096-byte sectors)
 #   lenovocust   ext4 partition labeled "boot" (kernel, DTB, GRUB config)
 #   arch         ext4 root filesystem labeled "eos-lapis"
-# GRUB loads an uncompressed Image and the board DTB. There is no initramfs.
+# GRUB loads the linux-lapis Image and the board DTB. linux-lapis has no
+# embedded initramfs, so the kernel mounts the root named on its command line.
 set -euo pipefail
 
 usage() {
@@ -36,6 +37,9 @@ case "$DE_NAME" in
     *) usage; exit 1 ;;
 esac
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORT="${LAPIS_PORT_TREE:-/port}"
+
 DATE=$(date -u +%Y%m%d)
 BUILD_DIR=/build
 IMAGES_DIR="$BUILD_DIR/images"
@@ -52,8 +56,12 @@ BOOT_LABEL="boot"
 ESP_LABEL="EOSLAPIS"
 DTB_NAME="sm8650-lenovo-tb520fu.dtb"
 CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel"
-LAPIS_REPO_NAME="${LAPIS_REPO_NAME:-lapis-pkgs}"
-LAPIS_REPO_URL="${LAPIS_REPO_URL:-https://lenovo-yoga-tab-plus.github.io/lapis-pkgs/repo/}"
+if [ -z "${LAPIS_REPO_NAME:-}" ]; then
+    LAPIS_REPO_NAME="lapis-pkgs"
+fi
+if [ -z "${LAPIS_REPO_URL:-}" ]; then
+    LAPIS_REPO_URL="https://lenovo-yoga-tab-plus.github.io/lapis-pkgs/repo/"
+fi
 BUILD_GIT_REV="${BUILD_GIT_REV:-unknown}"
 SILICIUM_IMG="$(pwd)/silicium.img"
 SILICIUM_SHA256="665927da2bcc072b96968992549e6a16d4f6903d5d1213068f8322bf9c5f57ab"
@@ -106,38 +114,62 @@ Server = https://mirror.moson.org/endeavouros/repo/\$repo/\$arch
 EOF
 
 BASE_PACKAGES=(
-    base sudo nano vim git wget rsync openssh
-    networkmanager iwd mesa
-    linux-firmware linux-firmware-qcom
+    base sudo nano vim
+    linux-firmware linux-firmware-qcom linux-firmware-atheros
     archlinuxarm-keyring
-    alsa-ucm-conf alsa-utils
-    pipewire pipewire-alsa pipewire-pulse wireplumber
-    upower
-    iptables noto-fonts
-    endeavouros-branding endeavouros-keyring endeavouros-mirrorlist
-    eos-hooks eos-rankmirrors welcome
+    endeavouros-keyring endeavouros-mirrorlist
+    eos-hooks
+    alsa-ucm-conf
+    iptables
+    python
+    lapis-metapkg
 )
 
-case "$DE_NAME" in
-    plasma)
-        DESKTOP_PACKAGES=(
-            plasma-meta plasma-desktop sddm
-            konsole dolphin
-        )
-        ;;
-    gnome)
-        DESKTOP_PACKAGES=(
-            gnome-shell gnome-session gnome-control-center gnome-console
-            nautilus gdm gnome-initial-setup xdg-desktop-portal-gnome
-        )
-        ;;
-esac
+read_pkg_list() {
+    local file="$1"
+    if [ ! -f "$file" ]; then
+        echo "Missing package list: $file" >&2
+        exit 1
+    fi
+    grep -vE '^[[:space:]]*(#|$)' "$file"
+}
 
-echo "### Bootstrapping rootfs with pacstrap..."
-pacstrap -C "$PACMAN_CONF" -KGM "$ROOTFS_DIR" \
-    "${BASE_PACKAGES[@]}" \
-    "${LAPIS_REPO_NAME}/lapis-metapkg" \
-    "${DESKTOP_PACKAGES[@]}"
+mapfile -t WANTED < <(
+    printf '%s\n' "${BASE_PACKAGES[@]}"
+    read_pkg_list "$SCRIPT_DIR/packages/eos-base-group"
+    read_pkg_list "$SCRIPT_DIR/packages/eos-apps"
+    read_pkg_list "$SCRIPT_DIR/packages/recom-apps"
+    read_pkg_list "$SCRIPT_DIR/packages/$DE_NAME"
+)
+mapfile -t WANTED < <(printf '%s\n' "${WANTED[@]}" | awk 'NF && !seen[$0]++')
+
+echo "### Syncing package databases..."
+pacman --config "$PACMAN_CONF" -Sy
+
+AVAILABLE=()
+SKIPPED=()
+for pkg in "${WANTED[@]}"; do
+    if pacman --config "$PACMAN_CONF" -Si "$pkg" >/dev/null 2>&1; then
+        AVAILABLE+=("$pkg")
+    else
+        SKIPPED+=("$pkg")
+        echo "skip (not in the repos): $pkg"
+    fi
+done
+
+case "$DE_NAME" in
+    gnome) REQUIRED=(lapis-metapkg linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm pipewire) ;;
+    plasma) REQUIRED=(lapis-metapkg linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm pipewire) ;;
+esac
+for pkg in "${REQUIRED[@]}"; do
+    if ! printf '%s\n' "${AVAILABLE[@]}" | grep -qx "$pkg"; then
+        echo "Required package is not available: $pkg" >&2
+        exit 1
+    fi
+done
+
+echo "### Bootstrapping rootfs with pacstrap (${#AVAILABLE[@]} packages)..."
+pacstrap -C "$PACMAN_CONF" -KGM "$ROOTFS_DIR" "${AVAILABLE[@]}"
 
 cp "$PACMAN_CONF" "$ROOTFS_DIR/etc/pacman.conf"
 printf '%s\n' lapis > "$ROOTFS_DIR/etc/hostname"
@@ -150,7 +182,7 @@ printf '%s\n' 'LANG=C.UTF-8' > "$ROOTFS_DIR/etc/locale.conf"
 printf '%s\n' 'KEYMAP=us' > "$ROOTFS_DIR/etc/vconsole.conf"
 printf '%s\n' "$CMDLINE" > "$ROOTFS_DIR/etc/cmdline"
 cat > "$ROOTFS_DIR/etc/fstab" <<EOF
-LABEL=$ROOTFS_LABEL /         ext4 defaults 0 1
+LABEL=$ROOTFS_LABEL /         ext4 defaults,x-systemd.growfs 0 1
 LABEL=$BOOT_LABEL    /boot     ext4 defaults 0 2
 LABEL=$ESP_LABEL     /boot/efi vfat defaults,nofail,x-systemd.device-timeout=10 0 2
 EOF
@@ -158,11 +190,27 @@ echo "%wheel ALL=(ALL:ALL) ALL" > "$ROOTFS_DIR/etc/sudoers.d/wheel"
 chmod 0440 "$ROOTFS_DIR/etc/sudoers.d/wheel"
 echo 'root:root' | arch-chroot "$ROOTFS_DIR" chpasswd
 
-arch-chroot "$ROOTFS_DIR" systemctl enable NetworkManager.service
+echo "### Staging kernel, Wi-Fi firmware, sensors, and boot services..."
+export LAPIS_PORT_TREE="$PORT"
+"$SCRIPT_DIR/stage-lapis-hardware.sh" "$ROOTFS_DIR"
+
+enable_unit() {
+    arch-chroot "$ROOTFS_DIR" systemctl enable "$1"
+}
+enable_unit NetworkManager.service
 case "$DE_NAME" in
-    gnome) arch-chroot "$ROOTFS_DIR" systemctl enable gdm.service ;;
-    plasma) arch-chroot "$ROOTFS_DIR" systemctl enable sddm.service ;;
+    gnome) enable_unit gdm.service ;;
+    plasma) enable_unit sddm.service ;;
 esac
+enable_unit bluetooth.service
+enable_unit sshd.service
+enable_unit qrtr-ns.service
+enable_unit hexagonrpcd-adsp-sensorspd.service
+enable_unit iio-sensor-proxy.service
+enable_unit mark-boot-successful.service
+enable_unit lapis-hardware-mac.service
+enable_unit lapis-tablet-mode.service
+enable_unit mnt-persist.mount
 
 KERNEL="$ROOTFS_DIR/boot/Image"
 DTB="$ROOTFS_DIR/boot/dtbs/qcom/$DTB_NAME"
@@ -175,8 +223,13 @@ if [ ! -f "$KERNEL" ] || [ ! -f "$DTB" ] || [ ! -f "$KERNREL" ]; then
 fi
 KERNVER="$(cat "$KERNREL")"
 
-write_grub_cfg() {
+# This is the menu that booted the installed system. It lives on the EFI
+# partition. GRUB selects the ext4 volume labeled "boot", then loads /Image
+# and the board DTB from there. There is no configfile chain. linux-lapis
+# mounts the root filesystem named by root= on the command line.
+write_boot_grub_cfg() {
     cat > "$1" <<EOF
+search --no-floppy --set=root --label $BOOT_LABEL
 set timeout=1
 set default=0
 menuentry 'EndeavourOS' {
@@ -184,6 +237,10 @@ menuentry 'EndeavourOS' {
   devicetree /dtbs/qcom/$DTB_NAME
 }
 EOF
+}
+
+write_esp_grub_cfg() {
+    write_boot_grub_cfg "$1"
 }
 
 echo "### Creating the boot filesystem..."
@@ -195,9 +252,9 @@ MKE2FS_DEVICE_SECTSIZE=4096 MKE2FS_DEVICE_PHYS_SECTSIZE=4096 \
 mount -o loop "$OUT/endeavouros_boot.raw" "$BOOT_MNT"
 cp "$KERNEL" "$BOOT_MNT/Image"
 mkdir -p "$BOOT_MNT/dtbs/qcom" "$BOOT_MNT/grub2"
-cp "$DTB" "$BOOT_MNT/dtbs/qcom/$DTB_NAME"
+cp -a "$ROOTFS_DIR/boot/dtbs/qcom/." "$BOOT_MNT/dtbs/qcom/"
 printf '%s\n' "$CMDLINE" > "$BOOT_MNT/cmdline.txt"
-write_grub_cfg "$BOOT_MNT/grub2/grub.cfg"
+write_boot_grub_cfg "$BOOT_MNT/grub2/grub.cfg"
 umount "$BOOT_MNT"
 
 echo "### Creating the EFI system partition..."
@@ -207,10 +264,13 @@ mkfs.fat -F 16 -S 4096 -n "$ESP_LABEL" "$OUT/endeavouros_esp.raw"
 mount -o loop "$OUT/endeavouros_esp.raw" "$ESP_MNT"
 mkdir -p "$ESP_MNT/EFI/BOOT"
 cp "$EFI_TEMPLATE/EFI/BOOT/BOOTAA64.EFI" "$ESP_MNT/EFI/BOOT/BOOTAA64.EFI"
-write_grub_cfg "$ESP_MNT/EFI/BOOT/grub.cfg"
+write_esp_grub_cfg "$ESP_MNT/EFI/BOOT/grub.cfg"
 umount "$ESP_MNT"
 
 echo "### Creating the root filesystem image..."
+# Same sizing as the pipa image: the file is the installed tree plus a
+# little spare room. x-systemd.growfs in fstab grows it to the partition
+# on first boot, so the image is not the size of the arch partition.
 ROOT_BYTES="$(du -sb "$ROOTFS_DIR" | awk '{print $1}')"
 ROOT_MB="$(( ROOT_BYTES / 1024 / 1024 + ROOT_BYTES / 1024 / 1024 / 8 + 512 ))"
 truncate -s "${ROOT_MB}M" "$OUT/endeavouros_rootfs.raw"
@@ -233,32 +293,34 @@ boot_label=$BOOT_LABEL
 esp_label=$ESP_LABEL
 repo=$LAPIS_REPO_URL
 cmdline=$CMDLINE
+packages=${#AVAILABLE[@]}
+skipped=${SKIPPED[*]:-none}
 EOF
 
 cat > "$OUT/flash.sh" <<'EOF'
 #!/usr/bin/env bash
-# Flash EndeavourOS onto the partitions the lapis port already uses.
-# Slot A, userdata, and vbmeta are left alone.
+# Flash EndeavourOS onto the Linux slot.
+# Slot B, userdata, and vbmeta are left alone.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "Lenovo Yoga Tab Plus (lapis) flasher"
-echo "  silicium.img           -> boot_b"
+echo "  silicium.img           -> boot_a"
 echo "  endeavouros_esp.raw    -> pstoredump"
 echo "  endeavouros_boot.raw   -> lenovocust"
 echo "  endeavouros_rootfs.raw -> arch"
 echo
-echo "This replaces the Linux system on the arch partition."
-echo "boot_a and userdata are not written."
+echo "Linux is slot A. Slot B is the Android boot and is not written."
+echo "userdata and vbmeta are not written."
+echo "The active slot is left as it is. set_active would clear the successful flag."
 read -r -p "Type yes to flash: " answer
 [ "$answer" = "yes" ] || { echo "Cancelled."; exit 1; }
 
 fastboot devices | grep -q . || { echo "No fastboot device." >&2; exit 1; }
-fastboot flash boot_b silicium.img
+fastboot flash boot_a silicium.img
 fastboot flash pstoredump endeavouros_esp.raw
 fastboot flash lenovocust endeavouros_boot.raw
 fastboot flash arch endeavouros_rootfs.raw
-fastboot set_active b
 fastboot reboot
 EOF
 
@@ -270,12 +332,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "Boot slot:"
-echo "  1) boot_b   (the slot this port uses)"
-echo "  2) boot_a"
+echo "  1) boot_a   (Linux)"
+echo "  2) boot_b   (Android boot; do not select this for EndeavourOS)"
 read -r -p "Choice [1]: " slot_choice
 case "${slot_choice:-1}" in
-    1|"") BOOT_PART=boot_b ;;
-    2) BOOT_PART=boot_a ;;
+    1|"") BOOT_PART=boot_a ;;
+    2) BOOT_PART=boot_b ;;
     *) echo "Unknown choice." >&2; exit 1 ;;
 esac
 
@@ -300,10 +362,13 @@ fastboot flash "$BOOT_PART" silicium.img
 fastboot flash pstoredump endeavouros_esp.raw
 fastboot flash lenovocust endeavouros_boot.raw
 fastboot flash "$ROOT_PART" endeavouros_rootfs.raw
-case "$BOOT_PART" in
-    boot_a) fastboot set_active a ;;
-    boot_b) fastboot set_active b ;;
-esac
+CURRENT="$(fastboot getvar current-slot 2>&1 | sed -n 's/^current-slot: //p')"
+WANTED="${BOOT_PART#boot_}"
+if [ "$CURRENT" != "$WANTED" ]; then
+    echo "Switching the active slot from ${CURRENT:-unknown} to $WANTED."
+    echo "set_active clears the successful flag."
+    fastboot set_active "$WANTED"
+fi
 fastboot reboot
 EOF
 chmod +x "$OUT/flash.sh" "$OUT/flash-multiboot.sh"

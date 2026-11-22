@@ -30,26 +30,40 @@ jobs:
           steps:
             - run:
                 name: Build Plasma image
-                no_output_timeout: 90m
+                no_output_timeout: 180m
                 command: |
+                  PORT_TREE="${LAPIS_PORT_TREE:-$HOME/TB520FU}"
+                  if [ ! -d "$PORT_TREE/downstream/firmware_raw" ] || [ ! -x "$PORT_TREE/tools/qrtr/qrtr-ns" ]; then
+                    echo "LAPIS_PORT_TREE must be the TB520FU checkout with the sensor dump, qrtr-ns, and hexagonrpcd."
+                    exit 1
+                  fi
                   mkdir -p images
                   docker run --rm --privileged \
                     -v "$PWD/images:/build/images" \
+                    -v "$PORT_TREE:/port:ro" \
                     -v "/dev:/dev" \
                     -e "BUILD_GIT_REV=${CIRCLE_SHA1}" \
+                    -e LAPIS_PORT_TREE=/port \
                     lapis-endeavouros-builder plasma
       - when:
           condition: << pipeline.parameters.build_gnome >>
           steps:
             - run:
                 name: Build GNOME image
-                no_output_timeout: 90m
+                no_output_timeout: 180m
                 command: |
+                  PORT_TREE="${LAPIS_PORT_TREE:-$HOME/TB520FU}"
+                  if [ ! -d "$PORT_TREE/downstream/firmware_raw" ] || [ ! -x "$PORT_TREE/tools/qrtr/qrtr-ns" ]; then
+                    echo "LAPIS_PORT_TREE must be the TB520FU checkout with the sensor dump, qrtr-ns, and hexagonrpcd."
+                    exit 1
+                  fi
                   mkdir -p images
                   docker run --rm --privileged \
                     -v "$PWD/images:/build/images" \
+                    -v "$PORT_TREE:/port:ro" \
                     -v "/dev:/dev" \
                     -e "BUILD_GIT_REV=${CIRCLE_SHA1}" \
+                    -e LAPIS_PORT_TREE=/port \
                     lapis-endeavouros-builder gnome
       - run:
           name: Summarize build artifacts
