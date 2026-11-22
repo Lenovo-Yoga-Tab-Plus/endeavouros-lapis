@@ -166,9 +166,11 @@ esac
 
 KERNEL="$ROOTFS_DIR/boot/Image"
 DTB="$ROOTFS_DIR/boot/dtbs/qcom/$DTB_NAME"
-KERNREL="$ROOTFS_DIR/usr/share/kernel/lapis/kernel.release"
+# linux-lapis installs the release file under lenovo-lapis, not lapis.
+KERNREL="$ROOTFS_DIR/usr/share/kernel/lenovo-lapis/kernel.release"
 if [ ! -f "$KERNEL" ] || [ ! -f "$DTB" ] || [ ! -f "$KERNREL" ]; then
     echo "linux-lapis did not install Image, $DTB_NAME, or kernel.release" >&2
+    echo "looked for $KERNEL, $DTB, and $KERNREL" >&2
     exit 1
 fi
 KERNVER="$(cat "$KERNREL")"
