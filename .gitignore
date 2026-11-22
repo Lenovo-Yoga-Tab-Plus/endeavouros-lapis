@@ -1,0 +1,5 @@
+images/
+*.zip
+*.log
+*.raw
+work-*/

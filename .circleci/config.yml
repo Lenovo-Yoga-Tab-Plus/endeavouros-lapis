@@ -1,0 +1,71 @@
+version: 2.1
+
+parameters:
+  build_plasma:
+    type: boolean
+    default: true
+  build_gnome:
+    type: boolean
+    default: true
+
+jobs:
+  build_images:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: arm.large
+    working_directory: ~/project
+    steps:
+      - checkout
+      - run:
+          name: Show runner details
+          command: |
+            uname -a
+            docker version
+      - run:
+          name: Build native ARM builder image
+          no_output_timeout: 90m
+          command: docker build lapis-endeavouros-builder -t lapis-endeavouros-builder
+      - when:
+          condition: << pipeline.parameters.build_plasma >>
+          steps:
+            - run:
+                name: Build Plasma image
+                no_output_timeout: 90m
+                command: |
+                  mkdir -p images
+                  docker run --rm --privileged \
+                    -v "$PWD/images:/build/images" \
+                    -v "/dev:/dev" \
+                    -e "BUILD_GIT_REV=${CIRCLE_SHA1}" \
+                    lapis-endeavouros-builder plasma
+      - when:
+          condition: << pipeline.parameters.build_gnome >>
+          steps:
+            - run:
+                name: Build GNOME image
+                no_output_timeout: 90m
+                command: |
+                  mkdir -p images
+                  docker run --rm --privileged \
+                    -v "$PWD/images:/build/images" \
+                    -v "/dev:/dev" \
+                    -e "BUILD_GIT_REV=${CIRCLE_SHA1}" \
+                    lapis-endeavouros-builder gnome
+      - run:
+          name: Summarize build artifacts
+          command: |
+            echo "Generated images:"
+            ls -lh images/*.zip 2>/dev/null || true
+            for zip in images/*.zip; do
+              [ -f "$zip" ] || continue
+              echo
+              echo "=== $zip ==="
+              unzip -l "$zip" | tail -n +4 | head -n -2
+            done
+      - store_artifacts:
+          path: images
+
+workflows:
+  build:
+    jobs:
+      - build_images
