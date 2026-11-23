@@ -56,7 +56,7 @@ BOOT_LABEL="boot"
 ESP_LABEL="EOSLAPIS"
 DTB_NAME="sm8650-lenovo-tb520fu.dtb"
 # Plymouth is started by the root filesystem. quiet keeps kernel text off the splash.
-CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused quiet splash"
+CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 quiet splash"
 if [ -z "${LAPIS_REPO_NAME:-}" ]; then
     LAPIS_REPO_NAME="lapis-pkgs"
 fi
@@ -110,7 +110,7 @@ SigLevel = Optional TrustAll
 Server = $LAPIS_REPO_URL
 
 [endeavouros]
-SigLevel = Optional TrustAll
+SigLevel = Required DatabaseOptional
 Server = https://mirror.moson.org/endeavouros/repo/\$repo/\$arch
 EOF
 
@@ -189,7 +189,10 @@ LABEL=$ESP_LABEL     /boot/efi vfat defaults,nofail,x-systemd.device-timeout=10 
 EOF
 echo "%wheel ALL=(ALL:ALL) ALL" > "$ROOTFS_DIR/etc/sudoers.d/wheel"
 chmod 0440 "$ROOTFS_DIR/etc/sudoers.d/wheel"
-echo 'root:root' | arch-chroot "$ROOTFS_DIR" chpasswd
+mkdir -p "$ROOTFS_DIR/etc/ssh/sshd_config.d"
+printf '%s\n' 'PermitRootLogin prohibit-password' \
+    > "$ROOTFS_DIR/etc/ssh/sshd_config.d/lapis-root.conf"
+arch-chroot "$ROOTFS_DIR" passwd -l root
 
 echo "### Staging kernel, Wi-Fi firmware, sensors, and boot services..."
 export LAPIS_PORT_TREE="$PORT"
@@ -207,6 +210,7 @@ enable_unit bluetooth.service
 enable_unit sshd.service
 enable_unit qrtr-ns.service
 enable_unit hexagonrpcd-adsp-sensorspd.service
+enable_unit lapis-ssc-resume.service
 enable_unit iio-sensor-proxy.service
 enable_unit tuned.service
 enable_unit tuned-ppd.service
@@ -329,28 +333,22 @@ EOF
 
 cat > "$OUT/flash-multiboot.sh" <<'EOF'
 #!/usr/bin/env bash
-# Choose the boot slot and the rootfs partition. The EFI and kernel
-# partitions stay on pstoredump and lenovocust.
+# Flash the Linux slot. The EFI and kernel partitions stay on pstoredump
+# and lenovocust. Slot B stays the Android boot.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "Boot slot:"
-echo "  1) boot_a   (Linux)"
-echo "  2) boot_b   (Android boot; do not select this for EndeavourOS)"
-read -r -p "Choice [1]: " slot_choice
-case "${slot_choice:-1}" in
-    1|"") BOOT_PART=boot_a ;;
-    2) BOOT_PART=boot_b ;;
-    *) echo "Unknown choice." >&2; exit 1 ;;
-esac
+echo "Boot slot: boot_a (Linux). Slot B is the Android boot and is not written."
+BOOT_PART=boot_a
 
 read -r -p "Rootfs partition name [arch]: " ROOT_PART
 ROOT_PART="${ROOT_PART:-arch}"
-if [ "$ROOT_PART" = "userdata" ]; then
-    echo "userdata is the Android data partition."
-    read -r -p "Type userdata again to overwrite it: " confirm_user
-    [ "$confirm_user" = "userdata" ] || { echo "Cancelled."; exit 1; }
-fi
+case "$ROOT_PART" in
+    userdata|boot_a|boot_b|vbmeta|vbmeta_a|vbmeta_b|persist|fsg|modemst1|modemst2|xbl|xbl_a|xbl_b|abl|abl_a|abl_b)
+        echo "$ROOT_PART is not a Linux rootfs target." >&2
+        exit 1
+        ;;
+esac
 
 echo
 echo "  silicium.img           -> $BOOT_PART"

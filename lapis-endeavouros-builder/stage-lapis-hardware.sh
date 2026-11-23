@@ -1,9 +1,10 @@
 #!/bin/bash
 # Install the pieces the package repo does not ship.
 #
-# linux-lapis supplies the kernel, the modules, and the DTB. ath12k needs the
-# tb520fu/ firmware directory and the generic board file. Sensors need the SSC
-# file root, a qrtr-ns binary, and the hexagonrpcd build that serves sensors/persist.
+# linux-lapis supplies the kernel, the modules, and the DTB. The qrtr and
+# hexagonrpc packages supply the sensor daemons. ath12k needs the tb520fu
+# firmware directory and the generic board file. Sensors also need the SSC
+# file root.
 set -euo pipefail
 
 ROOTFS="${1:?rootfs directory}"
@@ -11,8 +12,6 @@ PORT="${LAPIS_PORT_TREE:-/port}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 FIRMWARE_RAW="${FIRMWARE_RAW:-$PORT/downstream/firmware_raw}"
-QRTR_NS="${QRTR_NS:-$PORT/tools/qrtr/qrtr-ns}"
-HEXAGONRPCD="${HEXAGONRPCD:-$PORT/tools/hexagonrpc/build-static/hexagonrpcd}"
 ATH12K_BOARD="${ATH12K_BOARD:-$PORT/initramfs_build/mini_stage/lib/wlan-sets/bdf/generic.bin}"
 SSH_PUBKEY="${SSH_PUBKEY:-$PORT/keys/tb520fu_ed25519.pub}"
 
@@ -27,17 +26,11 @@ require "$FIRMWARE_RAW/dsp/adsp" "ADSP sensor libraries"
 require "$FIRMWARE_RAW/vendor/etc_sensors/config" "sensor config"
 require "$FIRMWARE_RAW/vendor/etc_sensors/sns_reg_config" "sensor registry config"
 require "$FIRMWARE_RAW/persist_cal/sensors/registry/sns_reg_version" "sensor calibration"
-require "$QRTR_NS" "qrtr-ns"
-require "$HEXAGONRPCD" "hexagonrpcd"
 require "$ATH12K_BOARD" "generic ath12k board file"
 require "$SSH_PUBKEY" "USB ssh public key"
 
-echo "### Installing qrtr-ns, hexagonrpcd, and the ath12k board file..."
+echo "### Installing the ath12k board file..."
 mkdir -p "$ROOTFS/usr/lib/lapis"
-install -Dm755 "$QRTR_NS" "$ROOTFS/usr/lib/lapis/qrtr-ns"
-install -Dm755 "$QRTR_NS" "$ROOTFS/usr/bin/qrtr-ns"
-install -Dm755 "$HEXAGONRPCD" "$ROOTFS/usr/lib/lapis/hexagonrpcd"
-install -Dm755 "$HEXAGONRPCD" "$ROOTFS/usr/bin/hexagonrpcd"
 install -m 644 "$ATH12K_BOARD" "$ROOTFS/usr/lib/lapis/ath12k-board.bin"
 install -m 755 "$SCRIPT_DIR/stage-ath12k.sh" "$ROOTFS/usr/lib/lapis/stage-ath12k.sh"
 install -m 755 "$SCRIPT_DIR/restore-port-binaries.sh" "$ROOTFS/usr/lib/lapis/restore-port-binaries.sh"
@@ -52,11 +45,9 @@ Type = Package
 Target = linux-firmware
 Target = linux-firmware-atheros
 Target = linux-firmware-qcom
-Target = hexagonrpc
-Target = qrtr
 
 [Action]
-Description = Restore the TB520FU ath12k layout and sensor binaries
+Description = Restore the TB520FU ath12k board-file layout
 When = PostTransaction
 Exec = /usr/lib/lapis/restore-port-binaries.sh
 EOF
@@ -76,6 +67,8 @@ printf '0\n' > "$SENSOR/socinfo/platform_subtype_id"
 printf '65536\n' > "$SENSOR/socinfo/platform_version"
 printf '577\n' > "$SENSOR/socinfo/soc_id"
 printf '2.0\n' > "$SENSOR/socinfo/revision"
+mkdir -p "$SENSOR/data/vendor/aplogd"
+: > "$SENSOR/data/vendor/aplogd/log.txt"
 if [ ! -d "$SENSOR/sensors/persist/registry/registry" ]; then
     echo "sensor registry is missing the nested registry directory" >&2
     exit 1
