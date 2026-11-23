@@ -57,7 +57,8 @@ ESP_LABEL="EOSLAPIS"
 DTB_NAME="sm8650-lenovo-tb520fu.dtb"
 # Firmware leaves the panel and USB clocks running. They have to stay that way
 # or the panel goes blank as soon as the kernel boots past GRUB.
-CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel"
+# video=efifb:off keeps the EFI framebuffer from painting the panel white.
+CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel video=efifb:off"
 if [ -z "${LAPIS_REPO_NAME:-}" ]; then
     LAPIS_REPO_NAME="lapis-pkgs"
 fi
