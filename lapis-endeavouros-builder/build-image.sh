@@ -314,6 +314,16 @@ if ! grep -q '^CONFIG_DRM_MSM=y$' "$KERNEL_CFG"; then
     exit 1
 fi
 
+# Stock iio-sensor-proxy owns its bus name before it opens the SSC sensors and
+# drops a claim that lands in between. lapis-autobright claims the light right
+# then, and auto-brightness reads 0 lux for the whole boot.
+if [ ! -x "$ROOTFS_DIR/usr/lib/lapis/iio-sensor-proxy" ] ||
+    ! grep -qx 'ExecStart=/usr/lib/lapis/iio-sensor-proxy' \
+        "$ROOTFS_DIR/usr/lib/systemd/system/iio-sensor-proxy.service.d/lapis-sensor-proxy.conf" 2>/dev/null; then
+    echo "lapis-metapkg did not install lapis-sensor-proxy" >&2
+    exit 1
+fi
+
 # This is the menu that booted the installed system. It lives on the EFI
 # partition. GRUB selects the ext4 volume labeled "boot", then loads /Image
 # and the board DTB from there. There is no configfile chain. linux-lapis
