@@ -135,6 +135,41 @@ read_pkg_list() {
     grep -vE '^[[:space:]]*(#|$)' "$file"
 }
 
+# pacstrap verifies packages with this container's keyring. The image only
+# populates Arch Linux ARM, so EndeavourOS signatures stop at "unknown trust"
+# (manuel's signing key A367FB01AE54040E and the archive key 003DB8B0CB23504F).
+# These three files are endeavouros-keyring 20231222-1, pinned to the hashes
+# in that package.
+trust_endeavouros_keys() {
+    local dir
+    dir="$(mktemp -d)"
+    if ! (
+        set -euo pipefail
+        cat > "$dir/sums" <<'EOF'
+0e4682e11d84af11f4c3b5d9fb67479eb8d2cb48453cdcd7aafe5509ff19e566b1e6795630c5391a2c61d6c005bf83fd7073f389a76bf5adb3c34506721470e3  endeavouros.gpg
+57b1603729122bbfad15e591da1d1bbadc9cbe5f6bcd1525c5045ef341c71993a5c6fef277bac60e841401b42d8c98b8e82e43a090d8b3917c155ac9f590b968  endeavouros-trusted
+cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e  endeavouros-revoked
+EOF
+        while read -r _ file; do
+            wget -q -O "$dir/$file" --user-agent=lapis \
+                "https://raw.githubusercontent.com/endeavouros-team/keyring/main/$file"
+        done < "$dir/sums"
+        (
+            cd "$dir"
+            sha512sum -c sums
+        )
+        install -dm755 /usr/share/pacman/keyrings
+        install -m0644 "$dir/endeavouros.gpg" "$dir/endeavouros-trusted" \
+            "$dir/endeavouros-revoked" /usr/share/pacman/keyrings/
+        pacman-key --populate endeavouros
+    ); then
+        rm -rf "$dir"
+        echo "Failed to trust EndeavourOS packager keys" >&2
+        return 1
+    fi
+    rm -rf "$dir"
+}
+
 mapfile -t WANTED < <(
     printf '%s\n' "${BASE_PACKAGES[@]}"
     read_pkg_list "$SCRIPT_DIR/packages/eos-base-group"
@@ -162,15 +197,20 @@ case "$DE_NAME" in
     gnome) REQUIRED=(lapis-metapkg linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm pipewire) ;;
     plasma) REQUIRED=(lapis-metapkg linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm pipewire) ;;
 esac
-for pkg in "${REQUIRED[@]}"; do
+for pkg in archlinuxarm-keyring endeavouros-keyring "${REQUIRED[@]}"; do
     if ! printf '%s\n' "${AVAILABLE[@]}" | grep -qx "$pkg"; then
         echo "Required package is not available: $pkg" >&2
         exit 1
     fi
 done
 
+echo "### Trusting EndeavourOS packager keys..."
+trust_endeavouros_keys
+
 echo "### Bootstrapping rootfs with pacstrap (${#AVAILABLE[@]} packages)..."
 pacstrap -C "$PACMAN_CONF" -KGM "$ROOTFS_DIR" "${AVAILABLE[@]}"
+echo "### Installing packager keys into the rootfs..."
+arch-chroot "$ROOTFS_DIR" pacman-key --populate archlinuxarm endeavouros
 
 cp "$PACMAN_CONF" "$ROOTFS_DIR/etc/pacman.conf"
 printf '%s\n' lapis > "$ROOTFS_DIR/etc/hostname"
