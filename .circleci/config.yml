@@ -32,8 +32,8 @@ jobs:
                 name: Build Plasma image
                 no_output_timeout: 180m
                 command: |
-                  PORT_TREE="${LAPIS_PORT_TREE:-$HOME/TB520FU}"
-                  if [ ! -d "$PORT_TREE/downstream/firmware_raw" ] || [ ! -x "$PORT_TREE/tools/qrtr/qrtr-ns" ]; then
+                  PORT_TREE="${LAPIS_PORT_TREE:-$PWD/port}"
+                  if [ ! -d "$PORT_TREE/downstream/firmware_raw" ] || [ ! -x "$PORT_TREE/tools/qrtr/qrtr-ns" ] || [ ! -x "$PORT_TREE/tools/hexagonrpc/build-static/hexagonrpcd" ]; then
                     echo "LAPIS_PORT_TREE must be the TB520FU checkout with the sensor dump, qrtr-ns, and hexagonrpcd."
                     exit 1
                   fi
@@ -52,8 +52,8 @@ jobs:
                 name: Build GNOME image
                 no_output_timeout: 180m
                 command: |
-                  PORT_TREE="${LAPIS_PORT_TREE:-$HOME/TB520FU}"
-                  if [ ! -d "$PORT_TREE/downstream/firmware_raw" ] || [ ! -x "$PORT_TREE/tools/qrtr/qrtr-ns" ]; then
+                  PORT_TREE="${LAPIS_PORT_TREE:-$PWD/port}"
+                  if [ ! -d "$PORT_TREE/downstream/firmware_raw" ] || [ ! -x "$PORT_TREE/tools/qrtr/qrtr-ns" ] || [ ! -x "$PORT_TREE/tools/hexagonrpc/build-static/hexagonrpcd" ]; then
                     echo "LAPIS_PORT_TREE must be the TB520FU checkout with the sensor dump, qrtr-ns, and hexagonrpcd."
                     exit 1
                   fi

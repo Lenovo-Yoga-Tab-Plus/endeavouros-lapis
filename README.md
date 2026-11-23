@@ -27,7 +27,7 @@ The Silicium image in `lapis-endeavouros-builder/silicium.img` is the RELEASE bu
 
 `lapis-pkgs` has to be built and reachable first. The default repo URL is `https://lenovo-yoga-tab-plus.github.io/lapis-pkgs/repo/`.
 
-The build reads the port checkout next to this repo (override with `LAPIS_PORT_TREE`). It needs `downstream/firmware_raw`, `tools/qrtr/qrtr-ns`, `tools/hexagonrpc/build-static/hexagonrpcd`, the generic ath12k board file, and `keys/tb520fu_ed25519.pub`. The kernel comes from the `linux-lapis` package.
+The build reads a TB520FU checkout when one sits next to this repo. A clone on its own uses `port/`, which already has the sensor dump, `qrtr-ns`, `hexagonrpcd`, the generic ath12k board file, and `keys/tb520fu_ed25519.pub`. Set `LAPIS_PORT_TREE` to use a different checkout. The kernel comes from the `linux-lapis` package.
 
 ```bash
 make builder

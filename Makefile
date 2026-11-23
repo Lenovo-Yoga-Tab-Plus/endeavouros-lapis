@@ -11,7 +11,8 @@ SHELL := /bin/bash
 BUILDER_IMAGE := lapis-endeavouros-builder
 BUILDER_DIR := lapis-endeavouros-builder
 IMAGES_DIR := images
-LAPIS_PORT_TREE ?= $(abspath $(CURDIR)/..)
+# A sibling TB520FU checkout wins. A plain clone uses the sensor root shipped in port/.
+LAPIS_PORT_TREE ?= $(shell if [ -d "$(CURDIR)/../downstream/firmware_raw" ] && [ -x "$(CURDIR)/../tools/qrtr/qrtr-ns" ]; then echo "$(abspath $(CURDIR)/..)"; else echo "$(CURDIR)/port"; fi)
 DOCKER_RUN := docker run --rm --privileged \
 	-v "$(CURDIR)/$(IMAGES_DIR):/build/images" \
 	-v "$(LAPIS_PORT_TREE):/port:ro" \
@@ -42,7 +43,7 @@ help:
 	@echo "Environment variables:"
 	@echo "  LAPIS_REPO_URL     Override the lapis-pkgs pacman repo URL"
 	@echo "  LAPIS_REPO_NAME    Override the lapis-pkgs repo section name"
-	@echo "  LAPIS_PORT_TREE    TB520FU checkout (sensors and firmware). Default: the parent directory"
+	@echo "  LAPIS_PORT_TREE    TB520FU checkout (sensors and firmware). Default: a sibling checkout, or port/"
 	@echo "  BUILD_GIT_REV      Git revision stamped into build metadata"
 
 check-docker:
