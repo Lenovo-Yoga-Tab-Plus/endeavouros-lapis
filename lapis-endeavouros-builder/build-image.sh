@@ -55,8 +55,9 @@ ROOTFS_LABEL="eos-lapis"
 BOOT_LABEL="boot"
 ESP_LABEL="EOSLAPIS"
 DTB_NAME="sm8650-lenovo-tb520fu.dtb"
-# Plymouth is started by the root filesystem. quiet keeps kernel text off the splash.
-CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 quiet splash"
+# Firmware leaves the panel and USB clocks running. They have to stay that way
+# or the panel goes blank as soon as the kernel boots past GRUB.
+CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel"
 if [ -z "${LAPIS_REPO_NAME:-}" ]; then
     LAPIS_REPO_NAME="lapis-pkgs"
 fi
