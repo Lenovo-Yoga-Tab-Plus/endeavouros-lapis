@@ -2,7 +2,6 @@ duf
 findutils
 git
 glances
-hwinfo
 inxi
 meld
 nano-syntax-highlighting
@@ -12,7 +11,6 @@ python-packaging
 rsync
 tldr
 sed
-vi
 wget
 firefox
 firewalld

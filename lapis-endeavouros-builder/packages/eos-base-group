@@ -9,7 +9,7 @@ xorg-xrandr
 b43-fwcutter
 dialog
 dnsmasq
-dnsutils
+bind
 ethtool
 iwd
 modemmanager
@@ -23,11 +23,9 @@ whois
 wireless-regdb
 wpa_supplicant
 xl2tpd
-downgrade
 pacman-contrib
 pkgfile
 rebuild-detector
-reflector
 yay
 accountsservice
 bash-completion
@@ -67,6 +65,7 @@ alsa-firmware
 alsa-plugins
 alsa-utils
 pavucontrol
+pipewire
 pipewire-pulse
 wireplumber
 pipewire-alsa
