@@ -61,6 +61,25 @@ GNOME runs `gnome-initial-setup`. Plasma uses the login screen. Root password is
 
 ## Status
 
-The panel, touch, pen, and folio cover work. Wi-Fi, Bluetooth, and USB networking work. Both cameras work. The speakers, the internal microphones, and the light sensor work. Closing the folio blanks the screen and does not suspend.
-
-The accelerometer does not report an orientation. The proximity sensor does not send a reading. The compass is not enabled. The headset microphone is configured and has not been tested with a plug. A very short sound right after boot can clip. Suspend does not stay down while the tablet is plugged into a computer. After that wake the light sensor has stuck at a dark reading.
+| Device | State |
+| --- | --- |
+| Panel | Working |
+| Touch | Working |
+| Pen | Working |
+| Folio | Working |
+| Keyboard | Working |
+| Clickpad | Working |
+| Wi-Fi | Working |
+| Bluetooth | Working |
+| USB network | Working |
+| Rear camera | Working |
+| Front camera | Working |
+| Speakers | Working |
+| Internal microphones | Working |
+| Headset microphone | Working |
+| Light sensor | Working |
+| Orientation | Working |
+| Proximity | Working |
+| Compass | Working |
+| Suspend | Working |
+| Fingerprint | Not working |
