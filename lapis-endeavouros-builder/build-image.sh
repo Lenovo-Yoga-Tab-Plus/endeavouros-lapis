@@ -6,8 +6,10 @@
 #   pstoredump   FAT16 EFI system partition (4096-byte sectors)
 #   lenovocust   ext4 partition labeled "boot" (kernel, DTB, GRUB config)
 #   arch         ext4 root filesystem labeled "eos-lapis"
-# GRUB loads the linux-lapis Image and the board DTB. linux-lapis has no
-# embedded initramfs, so the kernel mounts the root named on its command line.
+# GRUB loads the linux-lapis Image and the board DTB. The display controller
+# is built into that kernel. linux-lapis has no embedded initramfs, so the
+# kernel mounts the root named on its command line. lapis.conf loads the
+# remaining hardware before the desktop starts.
 set -euo pipefail
 
 usage() {
@@ -57,8 +59,7 @@ ESP_LABEL="EOSLAPIS"
 DTB_NAME="sm8650-lenovo-tb520fu.dtb"
 # Firmware leaves the panel and USB clocks running. They have to stay that way
 # or the panel goes blank as soon as the kernel boots past GRUB.
-# video=efifb:off keeps the EFI framebuffer from painting the panel white.
-CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel video=efifb:off"
+CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel"
 if [ -z "${LAPIS_REPO_NAME:-}" ]; then
     LAPIS_REPO_NAME="lapis-pkgs"
 fi
@@ -271,6 +272,47 @@ if [ ! -f "$KERNEL" ] || [ ! -f "$DTB" ] || [ ! -f "$KERNREL" ]; then
     exit 1
 fi
 KERNVER="$(cat "$KERNREL")"
+
+# The image is only useful if every module lapis.conf loads is actually in
+# this kernel. A missing name here is how the tablet boots with a blank panel
+# or with touch, Wi-Fi, and the keyboard absent.
+kernel_has_module() {
+    local rel="$1" name="$2"
+    local dir="$ROOTFS_DIR/usr/lib/modules/$rel"
+    local us="${name//-/_}" hy="${name//_/-}" found
+    if [ -f "$dir/modules.builtin" ] &&
+        grep -Eq "/(${us}|${hy})\\.ko$" "$dir/modules.builtin"; then
+        return 0
+    fi
+    found="$(find "$dir" -type f \( \
+        -name "${us}.ko" -o -name "${us}.ko.xz" -o -name "${us}.ko.zst" -o -name "${us}.ko.gz" -o \
+        -name "${hy}.ko" -o -name "${hy}.ko.xz" -o -name "${hy}.ko.zst" -o -name "${hy}.ko.gz" \
+        \) -print -quit)"
+    [ -n "$found" ]
+}
+MODULE_CONF="$ROOTFS_DIR/usr/lib/modules-load.d/lapis.conf"
+if [ ! -f "$MODULE_CONF" ]; then
+    echo "lapis-configs did not install $MODULE_CONF" >&2
+    exit 1
+fi
+while read -r mod; do
+    case "$mod" in
+        ''|\#*) continue ;;
+    esac
+    if ! kernel_has_module "$KERNVER" "$mod"; then
+        echo "linux-lapis $KERNVER has no module named $mod" >&2
+        exit 1
+    fi
+done < "$MODULE_CONF"
+KERNEL_CFG="$ROOTFS_DIR/boot/config-$KERNVER"
+if [ ! -f "$KERNEL_CFG" ]; then
+    echo "linux-lapis did not install $KERNEL_CFG" >&2
+    exit 1
+fi
+if ! grep -q '^CONFIG_DRM_MSM=y$' "$KERNEL_CFG"; then
+    echo "linux-lapis must build the display driver into the kernel" >&2
+    exit 1
+fi
 
 # This is the menu that booted the installed system. It lives on the EFI
 # partition. GRUB selects the ext4 volume labeled "boot", then loads /Image
