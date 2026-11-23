@@ -55,7 +55,8 @@ ROOTFS_LABEL="eos-lapis"
 BOOT_LABEL="boot"
 ESP_LABEL="EOSLAPIS"
 DTB_NAME="sm8650-lenovo-tb520fu.dtb"
-CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel"
+# Plymouth is started by the root filesystem. quiet keeps kernel text off the splash.
+CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused quiet splash"
 if [ -z "${LAPIS_REPO_NAME:-}" ]; then
     LAPIS_REPO_NAME="lapis-pkgs"
 fi
@@ -207,6 +208,8 @@ enable_unit sshd.service
 enable_unit qrtr-ns.service
 enable_unit hexagonrpcd-adsp-sensorspd.service
 enable_unit iio-sensor-proxy.service
+enable_unit tuned.service
+enable_unit tuned-ppd.service
 enable_unit mark-boot-successful.service
 enable_unit lapis-hardware-mac.service
 enable_unit lapis-tablet-mode.service

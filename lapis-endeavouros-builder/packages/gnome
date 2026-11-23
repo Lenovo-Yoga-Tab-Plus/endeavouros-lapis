@@ -3,6 +3,7 @@ loupe
 evince
 file-roller
 gdm
+gnome-backgrounds
 gnome-calculator
 gnome-clocks
 gnome-console
@@ -28,6 +29,8 @@ gvfs-smb
 nautilus
 sushi
 showtime
+snapshot
+pipewire-libcamera
 xdg-desktop-portal-gnome
 xdg-desktop-portal
 xdg-user-dirs-gtk

@@ -80,5 +80,7 @@ lsscsi
 mtools
 sg3_utils
 sof-firmware
-power-profiles-daemon
+tuned
+tuned-ppd
+plymouth
 upower
