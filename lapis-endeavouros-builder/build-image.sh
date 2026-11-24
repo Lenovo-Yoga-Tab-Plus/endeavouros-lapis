@@ -127,6 +127,7 @@ BASE_PACKAGES=(
     iptables
     python
     lapis-metapkg
+    waydroid
 )
 
 read_pkg_list() {
@@ -197,8 +198,8 @@ for pkg in "${WANTED[@]}"; do
 done
 
 case "$DE_NAME" in
-    gnome) REQUIRED=(lapis-metapkg linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm pipewire) ;;
-    plasma) REQUIRED=(lapis-metapkg linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm pipewire) ;;
+    gnome) REQUIRED=(lapis-metapkg waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm pipewire) ;;
+    plasma) REQUIRED=(lapis-metapkg waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm pipewire) ;;
 esac
 for pkg in archlinuxarm-keyring endeavouros-keyring "${REQUIRED[@]}"; do
     if ! printf '%s\n' "${AVAILABLE[@]}" | grep -qx "$pkg"; then
@@ -290,20 +291,24 @@ kernel_has_module() {
         \) -print -quit)"
     [ -n "$found" ]
 }
-MODULE_CONF="$ROOTFS_DIR/usr/lib/modules-load.d/lapis.conf"
-if [ ! -f "$MODULE_CONF" ]; then
-    echo "lapis-configs did not install $MODULE_CONF" >&2
-    exit 1
-fi
-while read -r mod; do
-    case "$mod" in
-        ''|\#*) continue ;;
-    esac
-    if ! kernel_has_module "$KERNVER" "$mod"; then
-        echo "linux-lapis $KERNVER has no module named $mod" >&2
+for MODULE_CONF in \
+    "$ROOTFS_DIR/usr/lib/modules-load.d/lapis.conf" \
+    "$ROOTFS_DIR/usr/lib/modules-load.d/waydroid.conf"
+do
+    if [ ! -f "$MODULE_CONF" ]; then
+        echo "lapis-configs did not install $MODULE_CONF" >&2
         exit 1
     fi
-done < "$MODULE_CONF"
+    while read -r mod; do
+        case "$mod" in
+            ''|\#*) continue ;;
+        esac
+        if ! kernel_has_module "$KERNVER" "$mod"; then
+            echo "linux-lapis $KERNVER has no module named $mod" >&2
+            exit 1
+        fi
+    done < "$MODULE_CONF"
+done
 KERNEL_CFG="$ROOTFS_DIR/boot/config-$KERNVER"
 if [ ! -f "$KERNEL_CFG" ]; then
     echo "linux-lapis did not install $KERNEL_CFG" >&2
@@ -311,6 +316,20 @@ if [ ! -f "$KERNEL_CFG" ]; then
 fi
 if ! grep -q '^CONFIG_DRM_MSM=y$' "$KERNEL_CFG"; then
     echo "linux-lapis must build the display driver into the kernel" >&2
+    exit 1
+fi
+for opt in CONFIG_PSI CONFIG_ANDROID_BINDER_IPC CONFIG_ANDROID_BINDERFS; do
+    if ! grep -q "^${opt}=y$" "$KERNEL_CFG"; then
+        echo "linux-lapis must enable $opt for Waydroid" >&2
+        exit 1
+    fi
+done
+if ! grep -q '^CONFIG_ANDROID_BINDER_DEVICES=""$' "$KERNEL_CFG"; then
+    echo "linux-lapis must leave binder devices empty so Waydroid uses binderfs" >&2
+    exit 1
+fi
+if [ ! -x "$ROOTFS_DIR/usr/bin/waydroid" ]; then
+    echo "waydroid is not installed" >&2
     exit 1
 fi
 
