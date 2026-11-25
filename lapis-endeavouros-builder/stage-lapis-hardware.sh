@@ -80,11 +80,11 @@ cat > "$ROOTFS/etc/systemd/system/mark-boot-successful.service" <<'EOF'
 [Unit]
 Description=Mark the booted slot successful
 After=local-fs.target
-ConditionPathExists=/usr/bin/qbootctl
+ConditionPathExists=/usr/bin/lapis-slot
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/qbootctl -m
+ExecStart=/usr/bin/lapis-slot mark-successful
 RemainAfterExit=yes
 
 [Install]

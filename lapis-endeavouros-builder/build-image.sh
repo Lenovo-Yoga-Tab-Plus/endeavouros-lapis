@@ -347,14 +347,26 @@ fi
 # partition. GRUB selects the ext4 volume labeled "boot", then loads /Image
 # and the board DTB from there. There is no configfile chain. linux-lapis
 # mounts the root filesystem named by root= on the command line.
+# Android starts \EFI\ANDROID\boot.efi with the linux command. This GRUB
+# image has no chainloader command, and linux loads an EFI application.
+# That loader enters the stock kernel with the MMU off. A fresh image
+# does not contain the Android payload.
 write_boot_grub_cfg() {
     cat > "$1" <<EOF
 search --no-floppy --set=root --label $BOOT_LABEL
-set timeout=1
+set timeout=15
+set timeout_style=menu
 set default=0
-menuentry 'EndeavourOS' {
+
+menuentry 'Linux' {
+  search --no-floppy --set=root --label $BOOT_LABEL
   linux /Image $CMDLINE
   devicetree /dtbs/qcom/$DTB_NAME
+}
+
+menuentry 'Android' {
+  search --no-floppy --set=root --file /EFI/ANDROID/boot.efi
+  linux /EFI/ANDROID/boot.efi
 }
 EOF
 }

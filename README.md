@@ -19,7 +19,7 @@ GRUB loads `/Image` and `/dtbs/qcom/sm8650-lenovo-tb520fu.dtb` from the boot fil
 root=LABEL=eos-lapis rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel
 ```
 
-The image installs the EndeavourOS desktop for the selected session, the base group, the EndeavourOS apps, and Firefox. It also stages the ath12k `tb520fu/` firmware layout with the generic board file, the SSC sensor root, `qrtr-ns`, and the hexagonrpcd build that serves that root. `sshd` is enabled, and the tablet SSH public key is installed for root. A oneshot runs `qbootctl -m` after boot.
+The image installs the EndeavourOS desktop for the selected session, the base group, the EndeavourOS apps, and Firefox. It also stages the ath12k `tb520fu/` firmware layout with the generic board file, the SSC sensor root, `qrtr-ns`, and the hexagonrpcd build that serves that root. `sshd` is enabled, and the tablet SSH public key is installed for root. A oneshot runs `lapis-slot mark-successful` after boot.
 
 The Silicium image in `lapis-endeavouros-builder/silicium.img` is the RELEASE build that boots this tablet. The GRUB binary in `efi-template/EFI/BOOT/BOOTAA64.EFI` is the one on the tablet's EFI system partition.
 
