@@ -174,12 +174,28 @@ EOF
     rm -rf "$dir"
 }
 
+# The Plasma session is selected as "plasma"; its package list is packages/kde.
+case "$DE_NAME" in
+    plasma) DE_PKG_LIST="$SCRIPT_DIR/packages/kde" ;;
+    *) DE_PKG_LIST="$SCRIPT_DIR/packages/$DE_NAME" ;;
+esac
+for pkg_list in \
+    "$SCRIPT_DIR/packages/eos-base-group" \
+    "$SCRIPT_DIR/packages/eos-apps" \
+    "$SCRIPT_DIR/packages/recom-apps" \
+    "$DE_PKG_LIST"
+do
+    if [ ! -f "$pkg_list" ]; then
+        echo "Missing package list: $pkg_list" >&2
+        exit 1
+    fi
+done
 mapfile -t WANTED < <(
     printf '%s\n' "${BASE_PACKAGES[@]}"
     read_pkg_list "$SCRIPT_DIR/packages/eos-base-group"
     read_pkg_list "$SCRIPT_DIR/packages/eos-apps"
     read_pkg_list "$SCRIPT_DIR/packages/recom-apps"
-    read_pkg_list "$SCRIPT_DIR/packages/$DE_NAME"
+    read_pkg_list "$DE_PKG_LIST"
 )
 mapfile -t WANTED < <(printf '%s\n' "${WANTED[@]}" | awk 'NF && !seen[$0]++')
 
