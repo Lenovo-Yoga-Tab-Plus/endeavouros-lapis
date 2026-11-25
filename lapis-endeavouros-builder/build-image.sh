@@ -106,6 +106,10 @@ echo "### Preparing pacman configuration..."
 cp /etc/pacman.conf "$PACMAN_CONF"
 sed -i '/^DisableSandbox$/d' "$PACMAN_CONF"
 sed -i '/^\[options\]$/a DisableSandbox' "$PACMAN_CONF"
+# GitHub Pages returns 503 for a large package often enough to abort a
+# 1.6 GiB pacstrap. Retry that file instead of discarding the transaction.
+sed -i '/^XferCommand/d' "$PACMAN_CONF"
+sed -i '\|^\[options\]$|a XferCommand = /usr/bin/curl -L -C - -f --retry 8 --retry-all-errors --retry-delay 5 -o %o %u' "$PACMAN_CONF"
 cat <<EOF >> "$PACMAN_CONF"
 
 [$LAPIS_REPO_NAME]
