@@ -106,10 +106,9 @@ echo "### Preparing pacman configuration..."
 cp /etc/pacman.conf "$PACMAN_CONF"
 sed -i '/^DisableSandbox$/d' "$PACMAN_CONF"
 sed -i '/^\[options\]$/a DisableSandbox' "$PACMAN_CONF"
-# GitHub Pages returns 503 for a large package often enough to abort a
-# 1.6 GiB pacstrap. Retry that file instead of discarding the transaction.
-sed -i '/^XferCommand/d' "$PACMAN_CONF"
-sed -i '\|^\[options\]$|a XferCommand = /usr/bin/curl -L -C - -f --retry 8 --retry-all-errors --retry-delay 5 -o %o %u' "$PACMAN_CONF"
+# An external downloader runs as pacman's DownloadUser and cannot write
+# /var/lib/pacman/sync. Keep pacman's own client. GitHub Pages still returns
+# 503 often enough that the sync and the install are retried below.
 cat <<EOF >> "$PACMAN_CONF"
 
 [$LAPIS_REPO_NAME]
@@ -204,7 +203,16 @@ mapfile -t WANTED < <(
 mapfile -t WANTED < <(printf '%s\n' "${WANTED[@]}" | awk 'NF && !seen[$0]++')
 
 echo "### Syncing package databases..."
-pacman --config "$PACMAN_CONF" -Sy
+attempt=1
+while ! pacman --config "$PACMAN_CONF" -Sy; do
+    if [ "$attempt" -ge 5 ]; then
+        echo "Failed to sync package databases" >&2
+        exit 1
+    fi
+    echo "Database sync failed (attempt ${attempt}/5); retrying in 15s" >&2
+    attempt=$((attempt + 1))
+    sleep 15
+done
 
 AVAILABLE=()
 SKIPPED=()
@@ -232,7 +240,16 @@ echo "### Trusting EndeavourOS packager keys..."
 trust_endeavouros_keys
 
 echo "### Bootstrapping rootfs with pacstrap (${#AVAILABLE[@]} packages)..."
-pacstrap -C "$PACMAN_CONF" -KGM "$ROOTFS_DIR" "${AVAILABLE[@]}"
+attempt=1
+while ! pacstrap -C "$PACMAN_CONF" -KGM "$ROOTFS_DIR" "${AVAILABLE[@]}"; do
+    if [ "$attempt" -ge 5 ]; then
+        echo "Failed to install packages to new root" >&2
+        exit 1
+    fi
+    echo "pacstrap failed (attempt ${attempt}/5); retrying in 20s" >&2
+    attempt=$((attempt + 1))
+    sleep 20
+done
 echo "### Installing packager keys into the rootfs..."
 arch-chroot "$ROOTFS_DIR" pacman-key --populate archlinuxarm endeavouros
 
