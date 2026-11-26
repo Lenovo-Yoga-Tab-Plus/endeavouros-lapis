@@ -412,11 +412,21 @@ install -d "$ROOTFS_DIR/etc/dracut.conf.d"
 cat > "$ROOTFS_DIR/etc/dracut.conf.d/99-plymouth.conf" <<'EOF'
 add_dracutmodules+=" plymouth "
 EOF
-arch-chroot "$ROOTFS_DIR" dracut --force --no-hostonly --kver "$KERNVER" \
+# The boot image is 256 MB and the tablet partition is about 224 MB.
+# Disk and display are built in, so leave the module and firmware sets out.
+arch-chroot "$ROOTFS_DIR" dracut --force --no-hostonly \
+    --omit "firmware kernel-modules kernel-modules-extra kernel-network-modules bluetooth crypt dm lvm mdraid multipath nfs nbd iscsi fcoe fips cifs qemu qemu-net hwdb resume" \
+    --kver "$KERNVER" \
     "/boot/initramfs-$KERNVER.img"
 cp -f "$ROOTFS_DIR/boot/initramfs-$KERNVER.img" "$ROOTFS_DIR/boot/initramfs.img"
-if [ "$(stat -c '%s' "$ROOTFS_DIR/boot/initramfs.img")" -lt 1048576 ]; then
+INITRAMFS_BYTES="$(stat -c '%s' "$ROOTFS_DIR/boot/initramfs.img")"
+echo "Initramfs size: $INITRAMFS_BYTES bytes"
+if [ "$INITRAMFS_BYTES" -lt 1048576 ]; then
     echo "Dracut initramfs is unexpectedly small" >&2
+    exit 1
+fi
+if [ "$INITRAMFS_BYTES" -gt 134217728 ]; then
+    echo "Dracut initramfs is larger than 128 MB and will not fit the boot partition" >&2
     exit 1
 fi
 INITRAMFS="$ROOTFS_DIR/boot/initramfs.img"
