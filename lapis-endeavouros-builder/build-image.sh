@@ -6,10 +6,9 @@
 #   pstoredump   FAT16 EFI system partition (4096-byte sectors)
 #   lenovocust   ext4 partition labeled "boot" (kernel, DTB, GRUB config)
 #   arch         ext4 root filesystem labeled "eos-lapis"
-# GRUB loads the linux-lapis Image and the board DTB. The display controller
-# is built into that kernel. linux-lapis has no embedded initramfs, so the
-# kernel mounts the root named on its command line. lapis.conf loads the
-# remaining hardware before the desktop starts.
+# GRUB loads the linux-lapis Image, the Dracut initramfs, and the board DTB.
+# The kernel package does not build that initramfs. Dracut does, inside this
+# rootfs, and that is what mounts root=LABEL=eos-lapis.
 set -euo pipefail
 
 usage() {
@@ -129,6 +128,8 @@ BASE_PACKAGES=(
     alsa-ucm-conf
     iptables
     python
+    dracut
+    plymouth
     lapis-metapkg
     waydroid
 )
@@ -226,8 +227,8 @@ for pkg in "${WANTED[@]}"; do
 done
 
 case "$DE_NAME" in
-    gnome) REQUIRED=(lapis-metapkg waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm plymouth pipewire) ;;
-    plasma) REQUIRED=(lapis-metapkg waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm pipewire) ;;
+    gnome) REQUIRED=(lapis-metapkg lapis-dracut dracut waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm plymouth pipewire) ;;
+    plasma) REQUIRED=(lapis-metapkg lapis-dracut dracut waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm plymouth pipewire) ;;
 esac
 for pkg in archlinuxarm-keyring endeavouros-keyring "${REQUIRED[@]}"; do
     if ! printf '%s\n' "${AVAILABLE[@]}" | grep -qx "$pkg"; then
@@ -238,6 +239,12 @@ done
 
 echo "### Trusting EndeavourOS packager keys..."
 trust_endeavouros_keys
+
+echo "### Seeding kernel cmdline for the install hook..."
+install -d "$ROOTFS_DIR/etc" "$ROOTFS_DIR/boot"
+printf '%s\n' "$CMDLINE" > "$ROOTFS_DIR/etc/cmdline"
+printf '%s\n' "$CMDLINE" > "$ROOTFS_DIR/boot/cmdline.txt"
+printf 'lapis placeholder initramfs\n' | gzip -c > "$ROOTFS_DIR/boot/initramfs.img"
 
 echo "### Bootstrapping rootfs with pacstrap (${#AVAILABLE[@]} packages)..."
 attempt=1
@@ -311,13 +318,12 @@ enable_unit lapis-tablet-mode.service
 enable_unit mnt-persist.mount
 
 KERNEL="$ROOTFS_DIR/boot/Image"
-INITRAMFS="$ROOTFS_DIR/boot/initramfs.img"
 DTB="$ROOTFS_DIR/boot/dtbs/qcom/$DTB_NAME"
 # linux-lapis installs the release file under lenovo-lapis, not lapis.
 KERNREL="$ROOTFS_DIR/usr/share/kernel/lenovo-lapis/kernel.release"
-if [ ! -f "$KERNEL" ] || [ ! -f "$INITRAMFS" ] || [ ! -f "$DTB" ] || [ ! -f "$KERNREL" ]; then
-    echo "linux-lapis did not install Image, initramfs.img, $DTB_NAME, or kernel.release" >&2
-    echo "looked for $KERNEL, $INITRAMFS, $DTB, and $KERNREL" >&2
+if [ ! -f "$KERNEL" ] || [ ! -f "$DTB" ] || [ ! -f "$KERNREL" ]; then
+    echo "linux-lapis did not install Image, $DTB_NAME, or kernel.release" >&2
+    echo "looked for $KERNEL, $DTB, and $KERNREL" >&2
     exit 1
 fi
 KERNVER="$(cat "$KERNREL")"
@@ -391,11 +397,32 @@ if [ ! -x "$ROOTFS_DIR/usr/lib/lapis/iio-sensor-proxy" ] ||
     exit 1
 fi
 
+echo "### Generating initramfs with dracut..."
+if ! arch-chroot "$ROOTFS_DIR" sh -c 'command -v dracut >/dev/null'; then
+    echo "dracut is required in the target rootfs but was not found" >&2
+    exit 1
+fi
+if [ ! -f "$ROOTFS_DIR/usr/lib/dracut/dracut.conf.d/10-lapis.conf" ]; then
+    echo "lapis-dracut did not install /usr/lib/dracut/dracut.conf.d/10-lapis.conf" >&2
+    exit 1
+fi
+install -d "$ROOTFS_DIR/etc/dracut.conf.d"
+cat > "$ROOTFS_DIR/etc/dracut.conf.d/99-plymouth.conf" <<'EOF'
+add_dracutmodules+=" plymouth "
+EOF
+arch-chroot "$ROOTFS_DIR" dracut --force --no-hostonly --kver "$KERNVER" \
+    "/boot/initramfs-$KERNVER.img"
+cp -f "$ROOTFS_DIR/boot/initramfs-$KERNVER.img" "$ROOTFS_DIR/boot/initramfs.img"
+if [ "$(stat -c '%s' "$ROOTFS_DIR/boot/initramfs.img")" -lt 1048576 ]; then
+    echo "Dracut initramfs is unexpectedly small" >&2
+    exit 1
+fi
+INITRAMFS="$ROOTFS_DIR/boot/initramfs.img"
+
 # This is the menu that booted the installed system. It lives on the EFI
 # partition. GRUB selects the ext4 volume labeled "boot", then loads /Image,
-# the initramfs, and the board DTB from there. There is no configfile chain.
-# The initramfs mounts root=LABEL=eos-lapis. The kernel cannot resolve a
-# filesystem label on its own.
+# the Dracut initramfs, and the board DTB from there. There is no configfile
+# chain. Dracut mounts root=LABEL=eos-lapis.
 # Android starts \EFI\ANDROID\boot.efi with the linux command. This GRUB
 # image has no chainloader command, and linux loads an EFI application.
 # That loader enters the stock kernel with the MMU off. A fresh image
