@@ -59,7 +59,7 @@ ESP_LABEL="EOSLAPIS"
 DTB_NAME="sm8650-lenovo-tb520fu.dtb"
 # Firmware leaves the panel and USB clocks running. They have to stay that way
 # or the panel goes blank as soon as the kernel boots past GRUB.
-CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused ignore_loglevel"
+CMDLINE="root=LABEL=$ROOTFS_LABEL rw rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused quiet splash plymouth.force-scale=1"
 if [ -z "${LAPIS_REPO_NAME:-}" ]; then
     LAPIS_REPO_NAME="lapis-pkgs"
 fi
@@ -226,7 +226,7 @@ for pkg in "${WANTED[@]}"; do
 done
 
 case "$DE_NAME" in
-    gnome) REQUIRED=(lapis-metapkg waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm pipewire) ;;
+    gnome) REQUIRED=(lapis-metapkg waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm plymouth pipewire) ;;
     plasma) REQUIRED=(lapis-metapkg waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm pipewire) ;;
 esac
 for pkg in archlinuxarm-keyring endeavouros-keyring "${REQUIRED[@]}"; do
@@ -263,6 +263,16 @@ EOF
 printf '%s\n' 'LANG=C.UTF-8' > "$ROOTFS_DIR/etc/locale.conf"
 printf '%s\n' 'KEYMAP=us' > "$ROOTFS_DIR/etc/vconsole.conf"
 printf '%s\n' "$CMDLINE" > "$ROOTFS_DIR/etc/cmdline"
+# 2944x1840 at ~270 dpi. Without this, Plymouth draws the splash at half
+# the panel size and scales it up.
+mkdir -p "$ROOTFS_DIR/etc/plymouth"
+cat > "$ROOTFS_DIR/etc/plymouth/plymouthd.conf" <<'EOF'
+[Daemon]
+Theme=spinner
+ShowDelay=0
+DeviceTimeout=8
+DeviceScale=1
+EOF
 cat > "$ROOTFS_DIR/etc/fstab" <<EOF
 LABEL=$ROOTFS_LABEL /         ext4 defaults,x-systemd.growfs 0 1
 LABEL=$BOOT_LABEL    /boot     ext4 defaults 0 2
@@ -301,12 +311,13 @@ enable_unit lapis-tablet-mode.service
 enable_unit mnt-persist.mount
 
 KERNEL="$ROOTFS_DIR/boot/Image"
+INITRAMFS="$ROOTFS_DIR/boot/initramfs.img"
 DTB="$ROOTFS_DIR/boot/dtbs/qcom/$DTB_NAME"
 # linux-lapis installs the release file under lenovo-lapis, not lapis.
 KERNREL="$ROOTFS_DIR/usr/share/kernel/lenovo-lapis/kernel.release"
-if [ ! -f "$KERNEL" ] || [ ! -f "$DTB" ] || [ ! -f "$KERNREL" ]; then
-    echo "linux-lapis did not install Image, $DTB_NAME, or kernel.release" >&2
-    echo "looked for $KERNEL, $DTB, and $KERNREL" >&2
+if [ ! -f "$KERNEL" ] || [ ! -f "$INITRAMFS" ] || [ ! -f "$DTB" ] || [ ! -f "$KERNREL" ]; then
+    echo "linux-lapis did not install Image, initramfs.img, $DTB_NAME, or kernel.release" >&2
+    echo "looked for $KERNEL, $INITRAMFS, $DTB, and $KERNREL" >&2
     exit 1
 fi
 KERNVER="$(cat "$KERNREL")"
@@ -381,9 +392,10 @@ if [ ! -x "$ROOTFS_DIR/usr/lib/lapis/iio-sensor-proxy" ] ||
 fi
 
 # This is the menu that booted the installed system. It lives on the EFI
-# partition. GRUB selects the ext4 volume labeled "boot", then loads /Image
-# and the board DTB from there. There is no configfile chain. linux-lapis
-# mounts the root filesystem named by root= on the command line.
+# partition. GRUB selects the ext4 volume labeled "boot", then loads /Image,
+# the initramfs, and the board DTB from there. There is no configfile chain.
+# The initramfs mounts root=LABEL=eos-lapis. The kernel cannot resolve a
+# filesystem label on its own.
 # Android starts \EFI\ANDROID\boot.efi with the linux command. This GRUB
 # image has no chainloader command, and linux loads an EFI application.
 # That loader enters the stock kernel with the MMU off. A fresh image
@@ -399,6 +411,7 @@ menuentry 'Linux' {
   search --no-floppy --set=root --label $BOOT_LABEL
   linux /Image $CMDLINE
   devicetree /dtbs/qcom/$DTB_NAME
+  initrd /initramfs.img
 }
 
 menuentry 'Android' {
@@ -420,6 +433,7 @@ MKE2FS_DEVICE_SECTSIZE=4096 MKE2FS_DEVICE_PHYS_SECTSIZE=4096 \
     "$OUT/endeavouros_boot.raw"
 mount -o loop "$OUT/endeavouros_boot.raw" "$BOOT_MNT"
 cp "$KERNEL" "$BOOT_MNT/Image"
+cp "$INITRAMFS" "$BOOT_MNT/initramfs.img"
 mkdir -p "$BOOT_MNT/dtbs/qcom" "$BOOT_MNT/grub2"
 cp -a "$ROOTFS_DIR/boot/dtbs/qcom/." "$BOOT_MNT/dtbs/qcom/"
 printf '%s\n' "$CMDLINE" > "$BOOT_MNT/cmdline.txt"
