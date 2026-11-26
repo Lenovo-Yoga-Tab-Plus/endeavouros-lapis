@@ -131,6 +131,8 @@ BASE_PACKAGES=(
     dracut
     plymouth
     lapis-metapkg
+    lapis-dracut
+    lapis-grub-config
     waydroid
 )
 
@@ -227,8 +229,8 @@ for pkg in "${WANTED[@]}"; do
 done
 
 case "$DE_NAME" in
-    gnome) REQUIRED=(lapis-metapkg lapis-dracut dracut waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm plymouth pipewire) ;;
-    plasma) REQUIRED=(lapis-metapkg lapis-dracut dracut waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm plymouth pipewire) ;;
+    gnome) REQUIRED=(lapis-metapkg lapis-dracut lapis-grub-config dracut waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python gnome-shell gdm plymouth pipewire) ;;
+    plasma) REQUIRED=(lapis-metapkg lapis-dracut lapis-grub-config dracut waydroid linux-firmware linux-firmware-qcom linux-firmware-atheros networkmanager bluez bluez-utils openssh firefox python plasma-desktop sddm plymouth pipewire) ;;
 esac
 for pkg in archlinuxarm-keyring endeavouros-keyring "${REQUIRED[@]}"; do
     if ! printf '%s\n' "${AVAILABLE[@]}" | grep -qx "$pkg"; then
