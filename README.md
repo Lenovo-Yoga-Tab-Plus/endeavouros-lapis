@@ -8,7 +8,7 @@ Boot is Mu-Silicium UEFI, a FAT EFI system partition, an ext4 boot filesystem, a
 | --- | --- | --- |
 | `silicium.img` | `boot_a` | 96 MB |
 | `endeavouros_esp.raw` | `pstoredump` | 128 MB, FAT16, 4096-byte sectors |
-| `endeavouros_boot.raw` | `lenovocust` | 300 MB, image is 256 MB, label `boot` |
+| `endeavouros_boot.raw` | `linuxboot` | 1 GiB, label `boot` |
 | `endeavouros_rootfs.raw` | `arch` | 100 GB partition, image is the installed tree plus spare room, label `eos-lapis` |
 
 `flash.sh` writes those four partitions and leaves slot B, `userdata`, and `vbmeta` alone. Slot B is the Android boot. It does not call `set_active`. That clears the successful flag, and this bootloader then treats a vbmeta mismatch as fatal. The tablet needs to already be on slot A. `flash-multiboot.sh` asks for the boot slot and the rootfs partition name, and switches slots only when the requested slot is not already active.

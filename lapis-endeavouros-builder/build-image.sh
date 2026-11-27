@@ -4,7 +4,7 @@
 # The boot path matches the running tablet:
 #   boot_a       Mu-Silicium UEFI (Linux). Slot B stays the Android boot.
 #   pstoredump   FAT16 EFI system partition (4096-byte sectors)
-#   lenovocust   ext4 partition labeled "boot" (kernel, DTB, GRUB config)
+#   linuxboot    ext4 partition labeled "boot" (kernel, DTB, GRUB config)
 #   arch         ext4 root filesystem labeled "eos-lapis"
 # GRUB loads the linux-lapis Image, the Dracut initramfs, and the board DTB.
 # The kernel package does not build that initramfs. Dracut does, inside this
@@ -70,7 +70,7 @@ SILICIUM_IMG="$(pwd)/silicium.img"
 SILICIUM_SHA256="665927da2bcc072b96968992549e6a16d4f6903d5d1213068f8322bf9c5f57ab"
 EFI_TEMPLATE="$(pwd)/efi-template"
 ESP_SIZE_MB=128
-BOOT_SIZE_MB=256
+BOOT_SIZE_MB=1024
 
 cleanup() {
     if mountpoint -q "$ROOTFS_DIR/boot" 2>/dev/null; then
@@ -412,11 +412,8 @@ install -d "$ROOTFS_DIR/etc/dracut.conf.d"
 cat > "$ROOTFS_DIR/etc/dracut.conf.d/99-plymouth.conf" <<'EOF'
 add_dracutmodules+=" plymouth "
 EOF
-# The boot image is 256 MB and the tablet partition is about 224 MB.
-# Disk and display are built in, so leave the module and firmware sets out.
-arch-chroot "$ROOTFS_DIR" dracut --force --no-hostonly \
-    --omit "firmware kernel-modules kernel-modules-extra kernel-network-modules bluetooth crypt dm lvm mdraid multipath nfs nbd iscsi fcoe fips cifs qemu qemu-net hwdb resume" \
-    --kver "$KERNVER" \
+# linuxboot is 1 GiB. Leave room for the kernel and the board DTB.
+arch-chroot "$ROOTFS_DIR" dracut --force --no-hostonly --kver "$KERNVER" \
     "/boot/initramfs-$KERNVER.img"
 cp -f "$ROOTFS_DIR/boot/initramfs-$KERNVER.img" "$ROOTFS_DIR/boot/initramfs.img"
 INITRAMFS_BYTES="$(stat -c '%s' "$ROOTFS_DIR/boot/initramfs.img")"
@@ -425,8 +422,8 @@ if [ "$INITRAMFS_BYTES" -lt 1048576 ]; then
     echo "Dracut initramfs is unexpectedly small" >&2
     exit 1
 fi
-if [ "$INITRAMFS_BYTES" -gt 134217728 ]; then
-    echo "Dracut initramfs is larger than 128 MB and will not fit the boot partition" >&2
+if [ "$INITRAMFS_BYTES" -gt 805306368 ]; then
+    echo "Dracut initramfs is larger than 768 MB and will not fit the boot partition" >&2
     exit 1
 fi
 INITRAMFS="$ROOTFS_DIR/boot/initramfs.img"
@@ -529,7 +526,7 @@ cd "$(dirname "$0")"
 echo "Lenovo Yoga Tab Plus (lapis) flasher"
 echo "  silicium.img           -> boot_a"
 echo "  endeavouros_esp.raw    -> pstoredump"
-echo "  endeavouros_boot.raw   -> lenovocust"
+echo "  endeavouros_boot.raw   -> linuxboot"
 echo "  endeavouros_rootfs.raw -> arch"
 echo
 echo "Linux is slot A. Slot B is the Android boot and is not written."
@@ -541,7 +538,7 @@ read -r -p "Type yes to flash: " answer
 fastboot devices | grep -q . || { echo "No fastboot device." >&2; exit 1; }
 fastboot flash boot_a silicium.img
 fastboot flash pstoredump endeavouros_esp.raw
-fastboot flash lenovocust endeavouros_boot.raw
+fastboot flash linuxboot endeavouros_boot.raw
 fastboot flash arch endeavouros_rootfs.raw
 fastboot reboot
 EOF
@@ -549,7 +546,7 @@ EOF
 cat > "$OUT/flash-multiboot.sh" <<'EOF'
 #!/usr/bin/env bash
 # Flash the Linux slot. The EFI and kernel partitions stay on pstoredump
-# and lenovocust. Slot B stays the Android boot.
+# and linuxboot. Slot B stays the Android boot.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -568,7 +565,7 @@ esac
 echo
 echo "  silicium.img           -> $BOOT_PART"
 echo "  endeavouros_esp.raw    -> pstoredump"
-echo "  endeavouros_boot.raw   -> lenovocust"
+echo "  endeavouros_boot.raw   -> linuxboot"
 echo "  endeavouros_rootfs.raw -> $ROOT_PART"
 read -r -p "Type yes to flash: " answer
 [ "$answer" = "yes" ] || { echo "Cancelled."; exit 1; }
@@ -576,7 +573,7 @@ read -r -p "Type yes to flash: " answer
 fastboot devices | grep -q . || { echo "No fastboot device." >&2; exit 1; }
 fastboot flash "$BOOT_PART" silicium.img
 fastboot flash pstoredump endeavouros_esp.raw
-fastboot flash lenovocust endeavouros_boot.raw
+fastboot flash linuxboot endeavouros_boot.raw
 fastboot flash "$ROOT_PART" endeavouros_rootfs.raw
 CURRENT="$(fastboot getvar current-slot 2>&1 | sed -n 's/^current-slot: //p')"
 WANTED="${BOOT_PART#boot_}"
